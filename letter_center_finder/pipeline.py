@@ -382,7 +382,7 @@ def _write_summary_text(output_path: str, results_data: dict) -> None:
 			f.write(f"  SVG Semi-Axes: rx={svg_e['rx']:.3f}  ry={svg_e['ry']:.3f}\n")
 			f.write(f"  Eccentricity: {ell['eccentricity']:.4f}\n")
 			f.write(f"  Convex Hull Area: {cr['convex_hull']['area']:.1f} px^2\n")
-			f.write(f"  Fit Quality:\n")
+			f.write("  Fit Quality:\n")
 			f.write(f"    Center offset: {fq['center_offset_pct']:.2f}%\n")
 			f.write(f"    Mean boundary dist: {fq['mean_boundary_pct']:.2f}%\n")
 			f.write(f"    Max boundary dist: {fq['max_boundary_pct']:.2f}%\n")

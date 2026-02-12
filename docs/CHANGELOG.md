@@ -5,39 +5,39 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- `docs/PROJECT_GOALS.md`: project goals, strategies (v1 failed, v2 planned),
+- `docs/PROJECT_GOALS.md`: project goals, strategies (v1 failed, v2 implemented),
   failure analysis, and quantitative measures of success
-- Complete implementation of letter glyph ellipse fitting system
-- `letter_center_finder/` Python package with five core modules:
-  - `svg_parser.py`: Parse SVG files and extract O and C character metadata
-  - `glyph_renderer.py`: Render isolated characters as clean bitmaps using PIL
-  - `geometry.py`: Compute convex hull and fit axis-aligned ellipses
-  - `visualizer.py`: Generate diagnostic PNG visualizations with matplotlib
-  - `pipeline.py`: End-to-end processing orchestration for single files and batch processing
-- `find_letter_centers.py`: Command-line interface for processing SVG files
-- Comprehensive test suite with 32 unit tests covering all modules
-- Support for extracting O and C characters from complex SVG text elements including tspans
-- Axis-aligned ellipse fitting using variance-based approach (vertical major axis, horizontal minor axis)
-- Convex hull computation with area and perimeter metrics
-- Multi-panel diagnostic visualizations showing glyph, contour, hull, and fitted ellipse
-- Batch processing of multiple SVG files with aggregate statistics
-- JSON and human-readable text output formats
-- `pip_requirements.txt`: numpy, opencv-python, pillow, scipy, matplotlib
 
-### Changed
-- Fixed package initialization file typo: `__init_.py` -> `__init__.py`
+### Changed (v2 Rewrite -- Per-Character SVG Isolation)
+- Rewrote `glyph_renderer.py`: replaced PIL isolated rendering with
+  per-character SVG color isolation and `rsvg-convert` rendering. For each
+  target glyph, all SVG elements except the target character are set to white,
+  then the SVG is rendered at high resolution with native fonts.
+- Rewrote `geometry.py`: replaced `std * sqrt(2)` ellipse fitting with direct
+  least-squares axis-aligned conic fitting. Added proper geometric distance
+  metrics (center offset, mean/max boundary distance, coverage).
+- Rewrote `pipeline.py`: new workflow using isolation SVGs, pixel-to-SVG
+  coordinate mapping via viewBox transform, and per-character diagnostic output.
+- Rewrote `visualizer.py`: new 4-panel diagnostic PNGs (isolation render,
+  binary mask, contour+hull, ellipse overlay) and SVG overlay with measured
+  ellipse positions.
+- Updated `svg_parser.py`: added `get_svg_dimensions()`, `svg_to_pixel()`,
+  `pixel_to_svg()` for viewBox coordinate mapping. Added element identification
+  fields (`_text_elem_index`, `_tspan_index`, `_char_offset`) to character
+  metadata for the isolation SVG builder.
+- Updated `find_letter_centers.py`: replaced `--scale` with `--zoom` flag
+  for `rsvg-convert` zoom factor (default 10).
+- C glyphs now fit to convex hull vertices to close the opening, giving
+  a better ellipse approximation for the open shape.
 
-### Implementation Details
-- Uses PIL/Pillow for high-quality glyph rendering with anti-aliasing
-- Uses OpenCV for binary mask extraction and contour detection
-- Uses scipy.spatial.ConvexHull for robust hull computation
-- Ellipse semi-axis calculation: `semi_axis = sqrt(2) * std_dev` for points uniformly distributed on ellipse
-- Supports font metadata extraction (family, size, weight) from SVG text and tspan elements
-- Handles CSS style attributes in SVG parsing
-- Scale factor parameter (default 4x) for high-resolution rendering
+### Results
+- All 6 SVG files processed, 44 characters total, 0 failures
+- O glyphs: 1.3-1.6% mean boundary distance, 92-100% coverage
+- C glyphs: 11.4% mean boundary distance (convex hull), 98-99% coverage
+- All code quality tests pass (pyflakes, ASCII, indentation, shebangs)
 
-### Verification
-- All 32 custom unit tests pass
-- All code quality tests pass (pyflakes, indentation, shebangs, import star)
-- Successfully processed 6 target SVG files with 44 total characters
-- Generated diagnostic visualizations and results for all test cases
+### Previous Implementation (v1 -- Failed)
+- Initial implementation using PIL isolated rendering with system fonts
+- Used variance-based ellipse fitting (`semi_axis = sqrt(2) * std_dev`)
+- All 6 SVG files had bad fits: wrong centers, wrong sizes, wrong positions
+- See [docs/PROJECT_GOALS.md](PROJECT_GOALS.md) for detailed failure analysis
