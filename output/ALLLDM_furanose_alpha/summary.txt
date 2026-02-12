@@ -2,7 +2,7 @@ Analysis Results: ALLLDM_furanose_alpha
 ============================================================
 
 O #0:
-  SVG Position: (0.00, -15.28)
+  SVG Position: (-3.72, -15.28)
   Font: sans-serif 12.0pt bold
 
   Ellipse:
@@ -50,7 +50,7 @@ O #1:
 ------------------------------------------------------------
 
 O #2:
-  SVG Position: (18.89, 4.30)
+  SVG Position: (12.19, 4.30)
   Font: sans-serif 10.8pt normal
 
   Ellipse:
@@ -98,7 +98,7 @@ O #3:
 ------------------------------------------------------------
 
 O #4:
-  SVG Position: (-41.23, 2.44)
+  SVG Position: (-48.67, 2.44)
   Font: sans-serif 12.0pt normal
 
   Ellipse:
@@ -122,7 +122,7 @@ O #4:
 ------------------------------------------------------------
 
 O #5:
-  SVG Position: (-34.35, 28.81)
+  SVG Position: (-49.23, 28.81)
   Font: sans-serif 12.0pt normal
 
   Ellipse:
@@ -146,7 +146,7 @@ O #5:
 ------------------------------------------------------------
 
 C #0:
-  SVG Position: (-34.35, 28.81)
+  SVG Position: (-41.79, 28.81)
   Font: sans-serif 12.0pt normal
 
   Ellipse:

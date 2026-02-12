@@ -56,7 +56,7 @@ def fit_axis_aligned_ellipse(points: numpy.ndarray) -> Dict:
 		- center: (cx, cy) pixel coordinates
 		- major_axis: vertical semi-axis length (a)
 		- minor_axis: horizontal semi-axis length (b)
-		- area: π * a * b
+		- area: pi * a * b
 		- eccentricity: sqrt(1 - (b/a)^2)
 	"""
 	if len(points) < 2:

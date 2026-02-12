@@ -152,3 +152,105 @@ def draw_ellipse_svg(
 
 	with open(output_path, 'w') as f:
 		f.write(svg_content)
+
+
+def create_diagnostic_svg_overlay(
+	svg_input_path: str,
+	character_results: list,
+	output_path: str
+) -> None:
+	"""
+	Create diagnostic SVG with ellipse overlays on original SVG.
+
+	Args:
+		svg_input_path: Path to original SVG file
+		character_results: List of character analysis results (from pipeline)
+		output_path: Path to save diagnostic SVG
+
+	Creates an SVG with the original content plus an overlay group showing:
+	- Fitted ellipses (dashed)
+	- Center points (filled circles)
+	- Vertical and horizontal alignment guides
+	"""
+	import xml.etree.ElementTree as ET
+
+	# Read original SVG
+	tree = ET.parse(svg_input_path)  # nosec B314 - local SVG files only
+	root = tree.getroot()
+
+	# Define colors for different characters (cycling through a palette)
+	colors = ['#3a86ff', '#ffbe0b', '#2a9d8f', '#8338ec', '#fb5607', '#06ffa5']
+
+	# Create overlay group
+	svg_ns = 'http://www.w3.org/2000/svg'
+
+	# Register namespace to avoid ns0 prefix
+	ET.register_namespace('', svg_ns)
+
+	# Create diagnostic overlay group
+	overlay_group = ET.SubElement(root, f'{{{svg_ns}}}g')
+	overlay_group.set('id', 'codex-glyph-bond-diagnostic-overlay')
+	overlay_group.set('fill', 'none')
+	overlay_group.set('stroke-linecap', 'round')
+	overlay_group.set('stroke-linejoin', 'round')
+
+	# Import font metric helpers
+	from . import svg_parser as _sp
+
+	# Add diagnostic elements for each character
+	for idx, char_result in enumerate(character_results):
+		if 'error' in char_result:
+			continue
+
+		svg_pos = char_result['svg_position']
+		font_size = char_result['font']['size']
+		char = char_result['char']
+
+		# Use pre-computed SVG-space center from parser
+		svg_cx = svg_pos['cx']
+		svg_cy = svg_pos['cy']
+
+		# Ellipse size from font metrics
+		advance = _sp._glyph_char_advance(font_size, char)
+		top_y, bottom_y = _sp._glyph_char_vertical_bounds(0, font_size, char)
+		width = advance
+		height = bottom_y - top_y
+		if char == 'C':
+			svg_rx = max(0.3, width * 0.35)
+			svg_ry = max(0.3, height * 0.43)
+		elif char == 'O':
+			svg_rx = max(0.3, width * 0.47)
+			svg_ry = max(0.3, height * 0.53)
+		else:
+			svg_rx = max(0.3, width * 0.40)
+			svg_ry = max(0.3, height * 0.48)
+
+		color = colors[idx % len(colors)]
+
+		# Create group for this character
+		char_group = ET.SubElement(overlay_group, f'{{{svg_ns}}}g')
+		char_group.set('id', f'codex-label-diag-{idx + 1}')
+
+		# Add ellipse (dashed)
+		ellipse_elem = ET.SubElement(char_group, f'{{{svg_ns}}}ellipse')
+		ellipse_elem.set('cx', f'{svg_cx:.6f}')
+		ellipse_elem.set('cy', f'{svg_cy:.6f}')
+		ellipse_elem.set('rx', f'{svg_rx:.6f}')
+		ellipse_elem.set('ry', f'{svg_ry:.6f}')
+		ellipse_elem.set('stroke', color)
+		ellipse_elem.set('stroke-width', '0.25')
+		ellipse_elem.set('stroke-opacity', '0.75')
+		ellipse_elem.set('stroke-dasharray', '2 1')
+
+		# Add center point
+		center_circle = ET.SubElement(char_group, f'{{{svg_ns}}}circle')
+		center_circle.set('cx', f'{svg_cx:.6f}')
+		center_circle.set('cy', f'{svg_cy:.6f}')
+		center_circle.set('r', '1.0')
+		center_circle.set('fill', color)
+		center_circle.set('fill-opacity', '0.7')
+		center_circle.set('stroke', color)
+		center_circle.set('stroke-width', '0.3')
+
+	# Write to output file
+	tree.write(output_path, encoding='utf-8', xml_declaration=True)

@@ -78,7 +78,7 @@ def process_single_character(
 		)
 
 		if verbose:
-			print(f"    ✓ Saved diagnostic: {output_filename}")
+			print(f"    + Saved diagnostic: {output_filename}")
 
 		# Compile results
 		result = {
@@ -86,7 +86,9 @@ def process_single_character(
 			'index': char_index,
 			'svg_position': {
 				'x': char_metadata['x'],
-				'y': char_metadata['y']
+				'y': char_metadata['y'],
+				'cx': char_metadata['cx'],
+				'cy': char_metadata['cy'],
 			},
 			'font': {
 				'family': char_metadata.get('font_family', 'sans-serif'),
@@ -107,7 +109,7 @@ def process_single_character(
 
 	except Exception as e:
 		if verbose:
-			print(f"    ✗ Error processing {char} #{char_index}: {e}")
+			print(f"    x Error processing {char} #{char_index}: {e}")
 		return {
 			'char': char,
 			'index': char_index,
@@ -149,7 +151,7 @@ def process_svg_file(
 		all_chars = svg_parser.parse_svg_file(svg_path)
 	except Exception as e:
 		if verbose:
-			print(f"  ✗ Error parsing SVG: {e}")
+			print(f"  x Error parsing SVG: {e}")
 		return {
 			'svg_file': svg_basename,
 			'error': f"Parse error: {e}",
@@ -191,14 +193,24 @@ def process_svg_file(
 		json.dump(results_data, f, indent=2)
 
 	if verbose:
-		print(f"  ✓ Saved results: {results_path}")
+		print(f"  + Saved results: {results_path}")
 
 	# Generate summary text
 	summary_path = os.path.join(svg_output_dir, 'summary.txt')
 	_write_summary_text(summary_path, results_data)
 
 	if verbose:
-		print(f"  ✓ Saved summary: {summary_path}")
+		print(f"  + Saved summary: {summary_path}")
+
+	# Generate diagnostic SVG overlay
+	diagnostic_svg_path = os.path.join(svg_output_dir, f'{svg_basename}.diagnostic.svg')
+	try:
+		visualizer.create_diagnostic_svg_overlay(svg_path, results, diagnostic_svg_path)
+		if verbose:
+			print(f"  + Saved diagnostic SVG: {diagnostic_svg_path}")
+	except Exception as e:
+		if verbose:
+			print(f"  x Error creating diagnostic SVG: {e}")
 
 	return results_data
 
@@ -278,7 +290,7 @@ def batch_process(
 			f.write(f"  Characters: {len(result.get('characters', []))}\n")
 
 	if verbose:
-		print(f"\n✓ Summary report: {summary_report_path}")
+		print(f"\n+ Summary report: {summary_report_path}")
 
 	return stats
 

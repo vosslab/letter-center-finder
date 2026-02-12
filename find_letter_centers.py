@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Analyze O and C letter glyphs in SVG files.
 

@@ -3,3 +3,6 @@ opencv-python
 pillow
 scipy
 matplotlib
+pytest
+beautifulsoup4
+rich

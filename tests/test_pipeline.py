@@ -41,6 +41,8 @@ def test_process_single_character(temp_output_dir):
 		'character': 'O',
 		'x': 10.0,
 		'y': 20.0,
+		'cx': 13.72,
+		'cy': 16.28,
 		'font_family': 'sans-serif',
 		'font_size': 12.0,
 		'font_weight': 'normal',
