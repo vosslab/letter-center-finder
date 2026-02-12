@@ -3,12 +3,16 @@ Parse SVG files to extract O and C character metadata.
 
 Extracts position, font attributes, and text content for individual characters.
 Font metric constants ported from bkchem/tools/measure_glyph_bond_alignment.py.
+Also provides viewBox extraction and SVG-to-pixel coordinate mapping.
 """
 
 import xml.etree.ElementTree as ET
-from typing import List, Dict, Tuple
+
+# SVG namespace used in target files
+SVG_NS = "http://www.w3.org/2000/svg"
 
 
+#============================================
 def _glyph_char_advance(font_size: float, char: str) -> float:
 	"""Estimated horizontal advance for one character."""
 	size = max(1.0, float(font_size))
@@ -28,7 +32,8 @@ def _glyph_char_advance(font_size: float, char: str) -> float:
 	return size * 0.56  # default
 
 
-def _glyph_char_vertical_bounds(baseline_y: float, font_size: float, char: str) -> Tuple[float, float]:
+#============================================
+def _glyph_char_vertical_bounds(baseline_y: float, font_size: float, char: str) -> tuple:
 	"""Return (top_y, bottom_y) for a character at baseline_y."""
 	size = max(1.0, float(font_size))
 	upper = char.upper()
@@ -37,6 +42,7 @@ def _glyph_char_vertical_bounds(baseline_y: float, font_size: float, char: str) 
 	return (baseline_y - size * 0.80, baseline_y + size * 0.20)
 
 
+#============================================
 def _glyph_text_width(text: str, font_size: float) -> float:
 	"""Total text width from per-character advances."""
 	advances = [_glyph_char_advance(font_size, c) for c in text]
@@ -44,47 +50,167 @@ def _glyph_text_width(text: str, font_size: float) -> float:
 	return sum(advances) + tracking * max(0, len(advances) - 1)
 
 
-def parse_svg_file(svg_path: str) -> List[Dict]:
+#============================================
+def get_svg_dimensions(svg_path: str) -> dict:
 	"""
-	Parse SVG and extract all O and C characters with their metadata.
+	Extract viewBox and viewport dimensions from SVG file.
 
 	Args:
 		svg_path: Path to SVG file
 
 	Returns:
-		List of dicts containing:
-		- character: 'O' or 'C'
-		- x, y: position in SVG coordinates
-		- cx, cy: estimated glyph center in SVG coordinates
-		- font_family: e.g., 'sans-serif'
-		- font_size: e.g., 12.0
-		- font_weight: 'normal' or 'bold'
-		- fill_color: hex color
-		- source_text: the full text element content (for debugging)
+		Dict with viewBox (x, y, width, height), viewport_width, viewport_height
+	"""
+	tree = ET.parse(svg_path)  # nosec B314 - local SVG files only
+	root = tree.getroot()
+	return _get_dimensions_from_root(root)
+
+
+#============================================
+def _get_dimensions_from_root(root) -> dict:
+	"""
+	Extract viewBox and viewport dimensions from SVG root element.
+
+	Args:
+		root: XML root element of SVG
+
+	Returns:
+		Dict with viewBox dict and viewport dimensions
+	"""
+	viewbox_str = root.get('viewBox', '')
+	# Strip units from width/height (e.g. "260px" -> "260")
+	width_str = root.get('width', '300').replace('px', '').strip()
+	height_str = root.get('height', '300').replace('px', '').strip()
+	width = float(width_str)
+	height = float(height_str)
+
+	if viewbox_str:
+		parts = viewbox_str.split()
+		vb = {
+			'x': float(parts[0]),
+			'y': float(parts[1]),
+			'width': float(parts[2]),
+			'height': float(parts[3]),
+		}
+	else:
+		vb = {'x': 0.0, 'y': 0.0, 'width': width, 'height': height}
+
+	return {
+		'viewBox': vb,
+		'viewport_width': width,
+		'viewport_height': height,
+	}
+
+
+#============================================
+def svg_to_pixel(svg_x: float, svg_y: float, svg_dims: dict, zoom: float = 1.0) -> tuple:
+	"""
+	Convert SVG coordinates to pixel coordinates.
+
+	Assumes preserveAspectRatio="xMidYMid meet" (the SVG default).
+
+	Args:
+		svg_x: X coordinate in SVG user units
+		svg_y: Y coordinate in SVG user units
+		svg_dims: Dict from get_svg_dimensions()
+		zoom: Render zoom factor (default 1.0)
+
+	Returns:
+		Tuple (pixel_x, pixel_y)
+	"""
+	vb = svg_dims['viewBox']
+	vp_w = svg_dims['viewport_width'] * zoom
+	vp_h = svg_dims['viewport_height'] * zoom
+
+	# Scale to fit (meet = use smaller scale)
+	scale = min(vp_w / vb['width'], vp_h / vb['height'])
+	rendered_w = vb['width'] * scale
+	rendered_h = vb['height'] * scale
+	# Center in viewport (xMid, YMid)
+	offset_x = (vp_w - rendered_w) / 2.0
+	offset_y = (vp_h - rendered_h) / 2.0
+
+	px = (svg_x - vb['x']) * scale + offset_x
+	py = (svg_y - vb['y']) * scale + offset_y
+	return (px, py)
+
+
+#============================================
+def pixel_to_svg(pixel_x: float, pixel_y: float, svg_dims: dict, zoom: float = 1.0) -> tuple:
+	"""
+	Convert pixel coordinates to SVG coordinates.
+
+	Inverse of svg_to_pixel(). Assumes preserveAspectRatio="xMidYMid meet".
+
+	Args:
+		pixel_x: X pixel coordinate
+		pixel_y: Y pixel coordinate
+		svg_dims: Dict from get_svg_dimensions()
+		zoom: Render zoom factor (default 1.0)
+
+	Returns:
+		Tuple (svg_x, svg_y)
+	"""
+	vb = svg_dims['viewBox']
+	vp_w = svg_dims['viewport_width'] * zoom
+	vp_h = svg_dims['viewport_height'] * zoom
+
+	scale = min(vp_w / vb['width'], vp_h / vb['height'])
+	rendered_w = vb['width'] * scale
+	rendered_h = vb['height'] * scale
+	offset_x = (vp_w - rendered_w) / 2.0
+	offset_y = (vp_h - rendered_h) / 2.0
+
+	sx = (pixel_x - offset_x) / scale + vb['x']
+	sy = (pixel_y - offset_y) / scale + vb['y']
+	return (sx, sy)
+
+
+#============================================
+def parse_svg_file(svg_path: str) -> list:
+	"""
+	Parse SVG and extract all O and C characters with their metadata.
+
+	Each character dict includes element identification fields needed
+	by the isolation SVG builder:
+	- _text_elem_index: index of the <text> element in document order
+	- _tspan_index: index of the <tspan> within the text element, or None
+	- _char_offset: character offset within the text/tspan string
+
+	Args:
+		svg_path: Path to SVG file
+
+	Returns:
+		List of character metadata dicts
 	"""
 	tree = ET.parse(svg_path)  # nosec B314 - local SVG files only
 	root = tree.getroot()
 
 	# SVG namespace
-	ns = {'svg': 'http://www.w3.org/2000/svg'}
+	ns = {'svg': SVG_NS}
 
 	characters = []
 
-	# Find all text elements
-	for text_elem in root.findall('.//svg:text', ns):
-		chars_in_element = extract_characters_from_text_element(text_elem, ns)
+	# Find all text elements and track their index
+	text_elements = root.findall(f'.//{{{SVG_NS}}}text')
+	for text_idx, text_elem in enumerate(text_elements):
+		chars_in_element = _extract_characters_from_text_element(
+			text_elem, ns, text_idx
+		)
 		characters.extend(chars_in_element)
 
 	return characters
 
 
-def extract_characters_from_text_element(elem, ns: Dict) -> List[Dict]:
+#============================================
+def _extract_characters_from_text_element(elem, ns: dict, text_elem_index: int) -> list:
 	"""
 	Extract O/C characters from text element including tspans.
 
 	Args:
 		elem: XML element (text element)
 		ns: Namespace dict
+		text_elem_index: Index of this text element among all text elements
 
 	Returns:
 		List of character metadata dicts for each O or C found
@@ -103,7 +229,7 @@ def extract_characters_from_text_element(elem, ns: Dict) -> List[Dict]:
 	# Get style attributes if present
 	style = elem.get('style', '')
 	if style:
-		style_dict = parse_style_attribute(style)
+		style_dict = _parse_style_attribute(style)
 		base_font_family = style_dict.get('font-family', base_font_family)
 		base_font_size = float(style_dict.get('font-size', str(base_font_size)).replace('px', ''))
 		base_font_weight = style_dict.get('font-weight', base_font_weight)
@@ -117,11 +243,15 @@ def extract_characters_from_text_element(elem, ns: Dict) -> List[Dict]:
 	direct_text = elem.text or ''
 	characters.extend(_extract_chars_from_string(
 		direct_text, base_x, base_y, base_text_anchor, base_font_family,
-		base_font_size, base_font_weight, base_fill, source_text
+		base_font_size, base_font_weight, base_fill, source_text,
+		text_elem_index=text_elem_index,
+		tspan_index=None,
 	))
 
 	# Check tspan elements
-	for tspan in elem.findall('.//svg:tspan', ns):
+	tspan_tag = f'{{{SVG_NS}}}tspan'
+	tspan_children = [child for child in elem if child.tag == tspan_tag]
+	for tspan_idx, tspan in enumerate(tspan_children):
 		# Get tspan-specific attributes (or inherit from parent)
 		tspan_x = float(tspan.get('x', str(base_x)))
 		tspan_y = float(tspan.get('y', str(base_y)))
@@ -134,7 +264,7 @@ def extract_characters_from_text_element(elem, ns: Dict) -> List[Dict]:
 		# Check tspan style
 		tspan_style = tspan.get('style', '')
 		if tspan_style:
-			style_dict = parse_style_attribute(tspan_style)
+			style_dict = _parse_style_attribute(tspan_style)
 			tspan_font_family = style_dict.get('font-family', tspan_font_family)
 			tspan_font_size = float(style_dict.get('font-size', str(tspan_font_size)).replace('px', ''))
 			tspan_font_weight = style_dict.get('font-weight', tspan_font_weight)
@@ -144,13 +274,16 @@ def extract_characters_from_text_element(elem, ns: Dict) -> List[Dict]:
 		tspan_text = tspan.text or ''
 		characters.extend(_extract_chars_from_string(
 			tspan_text, tspan_x, tspan_y, tspan_text_anchor, tspan_font_family,
-			tspan_font_size, tspan_font_weight, tspan_fill, source_text
+			tspan_font_size, tspan_font_weight, tspan_fill, source_text,
+			text_elem_index=text_elem_index,
+			tspan_index=tspan_idx,
 		))
 
 	return characters
 
 
-def parse_style_attribute(style: str) -> Dict[str, str]:
+#============================================
+def _parse_style_attribute(style: str) -> dict:
 	"""
 	Parse CSS style attribute into dict.
 
@@ -169,6 +302,7 @@ def parse_style_attribute(style: str) -> Dict[str, str]:
 	return style_dict
 
 
+#============================================
 def _extract_chars_from_string(
 	text: str,
 	x: float,
@@ -178,13 +312,16 @@ def _extract_chars_from_string(
 	font_size: float,
 	font_weight: str,
 	fill: str,
-	source_text: str
-) -> List[Dict]:
+	source_text: str,
+	text_elem_index: int = 0,
+	tspan_index: int = None,
+) -> list:
 	"""
 	Extract O and C characters from a text string with proper positioning.
 
 	Uses font metrics to compute per-character center coordinates,
-	accounting for text-anchor alignment.
+	accounting for text-anchor alignment. Also records element identification
+	fields needed by the isolation SVG builder.
 
 	Args:
 		text: Text to search
@@ -195,6 +332,8 @@ def _extract_chars_from_string(
 		font_weight: Font weight
 		fill: Fill color
 		source_text: Original source text for debugging
+		text_elem_index: Index of parent text element in SVG
+		tspan_index: Index of parent tspan, or None for direct text
 
 	Returns:
 		List of character metadata dicts
@@ -204,7 +343,7 @@ def _extract_chars_from_string(
 	if not text:
 		return characters
 
-	# Step 1: Compute cursor_x based on text_anchor
+	# Compute cursor_x based on text_anchor
 	text_width = _glyph_text_width(text, font_size)
 	tracking = max(0.0, font_size) * 0.04
 
@@ -215,7 +354,7 @@ def _extract_chars_from_string(
 	else:  # 'start'
 		cursor_x = x
 
-	# Step 2: Walk through characters, accumulating advance widths
+	# Walk through characters, accumulating advance widths
 	for i, char in enumerate(text):
 		advance = _glyph_char_advance(font_size, char)
 
@@ -237,7 +376,11 @@ def _extract_chars_from_string(
 				'font_weight': font_weight,
 				'fill_color': fill,
 				'source_text': source_text,
-				'char_index': i
+				'char_index': i,
+				# Element identification for isolation SVG builder
+				'_text_elem_index': text_elem_index,
+				'_tspan_index': tspan_index,
+				'_char_offset': i,
 			})
 
 		# Advance cursor: char advance + tracking (except after last char)
@@ -247,3 +390,8 @@ def _extract_chars_from_string(
 			cursor_x += advance
 
 	return characters
+
+
+# Keep old name as alias for backward compatibility in tests
+parse_style_attribute = _parse_style_attribute
+extract_characters_from_text_element = _extract_characters_from_text_element

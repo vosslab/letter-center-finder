@@ -51,11 +51,11 @@ Examples:
 	)
 
 	parser.add_argument(
-		'--scale',
-		dest='scale_factor',
+		'-z', '--zoom',
+		dest='zoom',
 		type=int,
-		default=4,
-		help='Rendering scale factor (default: 4)'
+		default=10,
+		help='SVG render zoom factor for rsvg-convert (default: 10)'
 	)
 
 	parser.add_argument(
@@ -90,7 +90,7 @@ def main():
 			args.input_path,
 			args.output_dir,
 			args.letters,
-			args.scale_factor,
+			args.zoom,
 			args.verbose
 		)
 
@@ -113,7 +113,7 @@ def main():
 			args.input_path,
 			args.output_dir,
 			args.letters,
-			args.scale_factor,
+			args.zoom,
 			args.verbose
 		)
 

@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- `docs/PROJECT_GOALS.md`: project goals, strategies (v1 failed, v2 planned),
+  failure analysis, and quantitative measures of success
 - Complete implementation of letter glyph ellipse fitting system
 - `letter_center_finder/` Python package with five core modules:
   - `svg_parser.py`: Parse SVG files and extract O and C character metadata

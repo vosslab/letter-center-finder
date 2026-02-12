@@ -1,256 +1,208 @@
 """
-Generate diagnostic visualizations (PNG/SVG).
+Generate diagnostic visualizations (PNG and SVG).
 
-Creates multi-panel plots showing glyph, contour, hull, and fitted ellipse.
+Creates multi-panel plots showing the isolation render, binary mask,
+contour with convex hull, and fitted ellipse overlay.
 """
 
 import numpy
-import matplotlib.pyplot as plt
-from matplotlib.patches import Ellipse as MPLEllipse
-from matplotlib.patches import Polygon
-from typing import Dict
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot
+import matplotlib.patches
+import xml.etree.ElementTree as ET
+
+SVG_NS = "http://www.w3.org/2000/svg"
 
 
+#============================================
 def create_diagnostic_plot(
-	glyph_mask: numpy.ndarray,
+	glyph_image: numpy.ndarray,
+	binary_mask: numpy.ndarray,
 	contour_points: numpy.ndarray,
 	hull_vertices: numpy.ndarray,
-	ellipse_params: Dict,
+	ellipse_params: dict,
+	fit_quality: dict,
 	output_path: str,
-	character: str
+	character: str,
 ) -> None:
 	"""
-	Create multi-panel diagnostic visualization.
-
-	Args:
-		glyph_mask: Binary glyph image
-		contour_points: Nx2 array of contour coordinates
-		hull_vertices: Mx2 array of hull vertices
-		ellipse_params: Ellipse parameters dict
-		output_path: Path to save PNG
-		character: Character being analyzed ('O' or 'C')
+	Create multi-panel diagnostic PNG for one glyph.
 
 	Panels:
-		1. Original glyph bitmap
-		2. Contour points + convex hull overlay
-		3. Glyph + fitted ellipse overlay
-		4. All together: glyph + hull + ellipse
-	"""
-	fig, axes = plt.subplots(2, 2, figsize=(12, 12))
-	fig.suptitle(f'Character: {character}', fontsize=16, fontweight='bold')
+		1. Isolation render (grayscale image of just the glyph)
+		2. Binary mask after thresholding
+		3. Contour (green) + convex hull (blue) on the glyph
+		4. All overlays: contour + hull + fitted ellipse (red)
 
-	# Panel 1: Original glyph bitmap
+	Args:
+		glyph_image: Grayscale rendered image (cropped to glyph region)
+		binary_mask: Binary mask (cropped to glyph region)
+		contour_points: Nx2 contour coordinates (in cropped space)
+		hull_vertices: Mx2 hull vertices (in cropped space)
+		ellipse_params: Ellipse dict with center, semi_x, semi_y
+		fit_quality: Fit quality metrics dict
+		output_path: Path to save the PNG
+		character: Character label ('O' or 'C')
+	"""
+	fig, axes = matplotlib.pyplot.subplots(2, 2, figsize=(12, 12))
+	fig.suptitle(f"Character: {character}", fontsize=16, fontweight='bold')
+
+	# Panel 1: Isolation render
 	ax = axes[0, 0]
-	ax.imshow(glyph_mask, cmap='gray', origin='upper')
-	ax.set_title('Original Glyph Bitmap')
+	ax.imshow(glyph_image, cmap='gray', origin='upper')
+	ax.set_title('Isolation Render')
 	ax.axis('off')
 
-	# Panel 2: Contour points + convex hull
+	# Panel 2: Binary mask
 	ax = axes[0, 1]
-	ax.imshow(glyph_mask, cmap='gray', origin='upper', alpha=0.3)
-	ax.plot(contour_points[:, 0], contour_points[:, 1], 'g.', markersize=1, label='Contour')
-	if len(hull_vertices) > 0:
-		hull_polygon = Polygon(hull_vertices, fill=False, edgecolor='blue', linewidth=2, label='Convex Hull')
-		ax.add_patch(hull_polygon)
-	ax.set_title('Contour + Convex Hull')
-	ax.legend()
-	ax.axis('equal')
+	ax.imshow(binary_mask, cmap='gray', origin='upper')
+	ax.set_title('Binary Mask')
+	ax.axis('off')
 
-	# Panel 3: Glyph + fitted ellipse
+	# Panel 3: Contour + convex hull
 	ax = axes[1, 0]
-	ax.imshow(glyph_mask, cmap='gray', origin='upper', alpha=0.3)
-	_draw_ellipse_on_axis(ax, ellipse_params, 'red', 'Fitted Ellipse')
-	ax.set_title('Glyph + Fitted Ellipse')
-	ax.legend()
-	ax.axis('equal')
-
-	# Panel 4: All together
-	ax = axes[1, 1]
-	ax.imshow(glyph_mask, cmap='gray', origin='upper', alpha=0.3)
-	ax.plot(contour_points[:, 0], contour_points[:, 1], 'g.', markersize=1, label='Contour')
+	ax.imshow(glyph_image, cmap='gray', origin='upper', alpha=0.3)
+	ax.plot(contour_points[:, 0], contour_points[:, 1],
+		'g.', markersize=1, label='Contour')
 	if len(hull_vertices) > 0:
-		hull_polygon = Polygon(hull_vertices, fill=False, edgecolor='blue', linewidth=2, label='Hull')
-		ax.add_patch(hull_polygon)
-	_draw_ellipse_on_axis(ax, ellipse_params, 'red', 'Ellipse')
-	ax.set_title('Complete Overlay')
-	ax.legend()
-	ax.axis('equal')
+		hull_poly = matplotlib.patches.Polygon(
+			hull_vertices, fill=False, edgecolor='blue',
+			linewidth=2, label='Convex Hull'
+		)
+		ax.add_patch(hull_poly)
+	ax.set_title('Contour + Convex Hull')
+	ax.legend(fontsize=8)
+	ax.set_aspect('equal')
 
-	# Add text summary
-	summary_text = (
-		f"Center: ({ellipse_params['center'][0]:.1f}, {ellipse_params['center'][1]:.1f})\n"
-		f"Major axis (vertical): {ellipse_params['major_axis']:.2f}\n"
-		f"Minor axis (horizontal): {ellipse_params['minor_axis']:.2f}\n"
-		f"Area: {ellipse_params['area']:.2f}\n"
-		f"Eccentricity: {ellipse_params['eccentricity']:.3f}"
+	# Panel 4: All overlays including fitted ellipse
+	ax = axes[1, 1]
+	ax.imshow(glyph_image, cmap='gray', origin='upper', alpha=0.3)
+	ax.plot(contour_points[:, 0], contour_points[:, 1],
+		'g.', markersize=1, label='Contour')
+	if len(hull_vertices) > 0:
+		hull_poly = matplotlib.patches.Polygon(
+			hull_vertices, fill=False, edgecolor='blue',
+			linewidth=1.5, label='Hull', linestyle='--'
+		)
+		ax.add_patch(hull_poly)
+	# Draw fitted ellipse
+	_draw_ellipse_on_axis(ax, ellipse_params, 'red', 'Fitted Ellipse')
+	# Draw center marker
+	cx, cy = ellipse_params['center']
+	ax.plot(cx, cy, 'r+', markersize=12, markeredgewidth=2, label='Center')
+	ax.set_title('Ellipse Fit Overlay')
+	ax.legend(fontsize=8)
+	ax.set_aspect('equal')
+
+	# Summary text below plots
+	summary = (
+		f"Center: ({cx:.1f}, {cy:.1f})  "
+		f"Semi-X: {ellipse_params['semi_x']:.1f}  "
+		f"Semi-Y: {ellipse_params['semi_y']:.1f}  "
+		f"Eccentricity: {ellipse_params['eccentricity']:.3f}\n"
+		f"Center offset: {fit_quality['center_offset_pct']:.1f}%  "
+		f"Mean boundary: {fit_quality['mean_boundary_pct']:.1f}%  "
+		f"Max boundary: {fit_quality['max_boundary_pct']:.1f}%  "
+		f"Coverage: {fit_quality['coverage']:.1%}"
 	)
-	fig.text(0.5, 0.02, summary_text, ha='center', fontsize=10, family='monospace',
+	fig.text(0.5, 0.02, summary, ha='center', fontsize=9, family='monospace',
 		bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
 
-	plt.tight_layout(rect=[0, 0.08, 1, 0.96])
-	plt.savefig(output_path, dpi=150, bbox_inches='tight')
-	plt.close()
+	matplotlib.pyplot.tight_layout(rect=[0, 0.06, 1, 0.96])
+	matplotlib.pyplot.savefig(output_path, dpi=150, bbox_inches='tight')
+	matplotlib.pyplot.close()
 
 
-def _draw_ellipse_on_axis(ax, ellipse_params: Dict, color: str, label: str) -> None:
+#============================================
+def _draw_ellipse_on_axis(ax, ellipse_params: dict, color: str, label: str) -> None:
 	"""
-	Draw ellipse on matplotlib axis.
+	Draw an axis-aligned ellipse on a matplotlib axis.
 
 	Args:
 		ax: Matplotlib axis
-		ellipse_params: Ellipse parameters dict
-		color: Color for ellipse
-		label: Label for legend
+		ellipse_params: Ellipse dict with center, semi_x, semi_y
+		color: Color for the ellipse
+		label: Legend label
 	"""
-	center = ellipse_params['center']
-	# Note: matplotlib Ellipse takes width and height (full axes), not semi-axes
-	# Our params are semi-axes, so we need to double them
-	width = 2 * ellipse_params['minor_axis']  # horizontal
-	height = 2 * ellipse_params['major_axis']  # vertical
+	cx, cy = ellipse_params['center']
+	# matplotlib Ellipse takes full width/height, not semi-axes
+	width = 2.0 * ellipse_params['semi_x']
+	height = 2.0 * ellipse_params['semi_y']
 
-	ellipse = MPLEllipse(
-		xy=center,
-		width=width,
-		height=height,
-		angle=0,  # No rotation (axis-aligned)
-		fill=False,
-		edgecolor=color,
-		linewidth=2,
-		label=label
+	ellipse = matplotlib.patches.Ellipse(
+		xy=(cx, cy), width=width, height=height,
+		angle=0, fill=False, edgecolor=color, linewidth=2, label=label
 	)
 	ax.add_patch(ellipse)
 
 
-def draw_ellipse_svg(
-	ellipse_params: Dict,
-	output_path: str,
-	canvas_size: tuple = (200, 200)
-) -> None:
-	"""
-	Export fitted ellipse as SVG for visualization.
-
-	Args:
-		ellipse_params: Ellipse parameters dict
-		output_path: Path to save SVG file
-		canvas_size: (width, height) of SVG canvas
-
-	Creates clean SVG with just the ellipse shape.
-	"""
-	rx = ellipse_params['minor_axis']  # horizontal radius
-	ry = ellipse_params['major_axis']  # vertical radius
-
-	# Translate center to canvas center
-	canvas_cx = canvas_size[0] / 2
-	canvas_cy = canvas_size[1] / 2
-
-	svg_content = f'''<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="{canvas_size[0]}" height="{canvas_size[1]}" viewBox="0 0 {canvas_size[0]} {canvas_size[1]}">
-	<ellipse cx="{canvas_cx}" cy="{canvas_cy}" rx="{rx}" ry="{ry}"
-		fill="none" stroke="red" stroke-width="2"/>
-	<circle cx="{canvas_cx}" cy="{canvas_cy}" r="3" fill="blue"/>
-</svg>'''
-
-	with open(output_path, 'w') as f:
-		f.write(svg_content)
-
-
+#============================================
 def create_diagnostic_svg_overlay(
 	svg_input_path: str,
 	character_results: list,
-	output_path: str
+	output_path: str,
 ) -> None:
 	"""
-	Create diagnostic SVG with ellipse overlays on original SVG.
+	Create diagnostic SVG with ellipse overlays on the original SVG.
+
+	Overlays fitted ellipses and center markers at the SVG-space positions
+	computed by mapping pixel coordinates back through the viewBox transform.
 
 	Args:
-		svg_input_path: Path to original SVG file
-		character_results: List of character analysis results (from pipeline)
-		output_path: Path to save diagnostic SVG
-
-	Creates an SVG with the original content plus an overlay group showing:
-	- Fitted ellipses (dashed)
-	- Center points (filled circles)
-	- Vertical and horizontal alignment guides
+		svg_input_path: Path to the original SVG file
+		character_results: List of result dicts from the pipeline
+		output_path: Path to save the diagnostic SVG
 	"""
-	import xml.etree.ElementTree as ET
-
-	# Read original SVG
 	tree = ET.parse(svg_input_path)  # nosec B314 - local SVG files only
 	root = tree.getroot()
 
-	# Define colors for different characters (cycling through a palette)
-	colors = ['#3a86ff', '#ffbe0b', '#2a9d8f', '#8338ec', '#fb5607', '#06ffa5']
+	ET.register_namespace('', SVG_NS)
 
 	# Create overlay group
-	svg_ns = 'http://www.w3.org/2000/svg'
+	overlay = ET.SubElement(root, f'{{{SVG_NS}}}g')
+	overlay.set('id', 'ellipse-fit-overlay')
+	overlay.set('fill', 'none')
 
-	# Register namespace to avoid ns0 prefix
-	ET.register_namespace('', svg_ns)
+	# Color palette for different characters
+	colors = ['#ff3333', '#3366ff', '#33cc33', '#ff9900', '#cc33ff', '#00cccc']
 
-	# Create diagnostic overlay group
-	overlay_group = ET.SubElement(root, f'{{{svg_ns}}}g')
-	overlay_group.set('id', 'codex-glyph-bond-diagnostic-overlay')
-	overlay_group.set('fill', 'none')
-	overlay_group.set('stroke-linecap', 'round')
-	overlay_group.set('stroke-linejoin', 'round')
-
-	# Import font metric helpers
-	from . import svg_parser as _sp
-
-	# Add diagnostic elements for each character
-	for idx, char_result in enumerate(character_results):
-		if 'error' in char_result:
+	for idx, result in enumerate(character_results):
+		if 'error' in result:
 			continue
 
-		svg_pos = char_result['svg_position']
-		font_size = char_result['font']['size']
-		char = char_result['char']
-
-		# Use pre-computed SVG-space center from parser
-		svg_cx = svg_pos['cx']
-		svg_cy = svg_pos['cy']
-
-		# Ellipse size from font metrics
-		advance = _sp._glyph_char_advance(font_size, char)
-		top_y, bottom_y = _sp._glyph_char_vertical_bounds(0, font_size, char)
-		width = advance
-		height = bottom_y - top_y
-		if char == 'C':
-			svg_rx = max(0.3, width * 0.35)
-			svg_ry = max(0.3, height * 0.43)
-		elif char == 'O':
-			svg_rx = max(0.3, width * 0.47)
-			svg_ry = max(0.3, height * 0.53)
-		else:
-			svg_rx = max(0.3, width * 0.40)
-			svg_ry = max(0.3, height * 0.48)
+		svg_ellipse = result.get('svg_ellipse')
+		if svg_ellipse is None:
+			continue
 
 		color = colors[idx % len(colors)]
+		char = result['char']
+		cx = svg_ellipse['cx']
+		cy = svg_ellipse['cy']
+		rx = svg_ellipse['rx']
+		ry = svg_ellipse['ry']
 
-		# Create group for this character
-		char_group = ET.SubElement(overlay_group, f'{{{svg_ns}}}g')
-		char_group.set('id', f'codex-label-diag-{idx + 1}')
+		# Group for this character
+		grp = ET.SubElement(overlay, f'{{{SVG_NS}}}g')
+		grp.set('id', f'fit-{char}-{idx}')
 
-		# Add ellipse (dashed)
-		ellipse_elem = ET.SubElement(char_group, f'{{{svg_ns}}}ellipse')
-		ellipse_elem.set('cx', f'{svg_cx:.6f}')
-		ellipse_elem.set('cy', f'{svg_cy:.6f}')
-		ellipse_elem.set('rx', f'{svg_rx:.6f}')
-		ellipse_elem.set('ry', f'{svg_ry:.6f}')
-		ellipse_elem.set('stroke', color)
-		ellipse_elem.set('stroke-width', '0.25')
-		ellipse_elem.set('stroke-opacity', '0.75')
-		ellipse_elem.set('stroke-dasharray', '2 1')
+		# Ellipse outline
+		ell = ET.SubElement(grp, f'{{{SVG_NS}}}ellipse')
+		ell.set('cx', f'{cx:.4f}')
+		ell.set('cy', f'{cy:.4f}')
+		ell.set('rx', f'{rx:.4f}')
+		ell.set('ry', f'{ry:.4f}')
+		ell.set('stroke', color)
+		ell.set('stroke-width', '0.4')
+		ell.set('stroke-opacity', '0.85')
+		ell.set('fill', 'none')
 
-		# Add center point
-		center_circle = ET.SubElement(char_group, f'{{{svg_ns}}}circle')
-		center_circle.set('cx', f'{svg_cx:.6f}')
-		center_circle.set('cy', f'{svg_cy:.6f}')
-		center_circle.set('r', '1.0')
-		center_circle.set('fill', color)
-		center_circle.set('fill-opacity', '0.7')
-		center_circle.set('stroke', color)
-		center_circle.set('stroke-width', '0.3')
+		# Center dot
+		dot = ET.SubElement(grp, f'{{{SVG_NS}}}circle')
+		dot.set('cx', f'{cx:.4f}')
+		dot.set('cy', f'{cy:.4f}')
+		dot.set('r', '0.8')
+		dot.set('fill', color)
+		dot.set('fill-opacity', '0.8')
 
-	# Write to output file
 	tree.write(output_path, encoding='utf-8', xml_declaration=True)
