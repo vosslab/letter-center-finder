@@ -5,8 +5,12 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- `docs/INSTALL.md`: setup steps, system dependencies (librsvg), Python
+  requirements, and verify command
+- `docs/USAGE.md`: CLI reference, examples, and input/output documentation
 - `docs/PROJECT_GOALS.md`: project goals, strategies (v1 failed, v2 implemented),
   failure analysis, and quantitative measures of success
+- `README.md`: rewrote with overview, quick start, doc links, and status
 
 ### Changed (v2 Rewrite -- Per-Character SVG Isolation)
 - Rewrote `glyph_renderer.py`: replaced PIL isolated rendering with
